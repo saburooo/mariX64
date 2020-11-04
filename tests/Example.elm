@@ -1,10 +1,40 @@
 module Example exposing (..)
 
-import Expect exposing (Expectation)
-import Fuzz exposing (Fuzzer, int, list, string)
-import Test exposing (..)
+
+import Angle
+import Camera3d
+import Color
+import Direction3d
+import Html exposing (Html)
+import Length
+import Pixels
+import Point3d
+import Scene3d
+import Scene3d.Material as Material
+import Viewpoint3d
 
 
-suite : Test
-suite =
-    todo "Implement our first test. See https://package.elm-lang.org/packages/elm-explorations/test/latest for how to do this!"
+main : Html msg
+main =
+    Scene3d.unlit
+        { entities =
+            [ Scene3d.quad (Material.color Color.blue)
+                (Point3d.meters -1 -1 0)
+                (Point3d.meters 1 -1 0)
+                (Point3d.meters 1 1 0)
+                (Point3d.meters -1 1 0)
+            ]
+        , camera =
+            Camera3d.perspective
+                { viewpoint =
+                    Viewpoint3d.lookAt
+                        { focalPoint = Point3d.origin
+                        , eyePoint = Point3d.meters 5 2 3
+                        , upDirection = Direction3d.positiveZ
+                        }
+                , verticalFieldOfView = Angle.degrees 30
+                }
+        , clipDepth = Length.meters 1
+        , background = Scene3d.transparentBackground
+        , dimensions = ( Pixels.pixels 800, Pixels.pixels 600 )
+        }

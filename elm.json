@@ -16,7 +16,8 @@
             "ianmackenzie/elm-geometry": "3.7.0",
             "ianmackenzie/elm-geometry-test": "1.0.0",
             "ianmackenzie/elm-triangular-mesh": "1.1.0",
-            "ianmackenzie/elm-units": "2.7.0"
+            "ianmackenzie/elm-units": "2.7.0",
+            "w0rm/elm-physics": "5.1.1"
         },
         "indirect": {
             "elm/random": "1.0.0",

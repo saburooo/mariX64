@@ -14,9 +14,19 @@ import Json.Encode as Encode
 
 import Array
 
+import Block3d
+import Acceleration
+import Frame3d
+import Mass
+
+import Physics.Body as Body exposing (Body)
+import Physics.Coordinates exposing (BodyCoordinates, WorldCoordinates)
+import Physics.World as World exposing (World)
+
 import Scene3d.Material as Material exposing (Material)
 import Color
 import Scene3d
+import Scene3d.Mesh as Mesh exposing (Mesh)
 import Sphere3d exposing (Sphere3d)
 import Point3d exposing (Point3d)
 import Camera3d exposing (Camera3d)
@@ -30,6 +40,7 @@ import LuminousFlux
 import Illuminance
 
 import Direction3d
+import Physics.World exposing (World)
 
 
 main : Program () Model Msg
@@ -58,10 +69,10 @@ bordeaux =
 
 
 -- ボルドーよりあかるーい
-lightRed : Material.Uniform WorldCoordinates
-lightRed =
+ultramarineBlue : Material.Uniform WorldCoordinates
+ultramarineBlue =
     Material.metal
-        { baseColor=Color.rgb255 255 92 105
+        { baseColor=Color.rgb255 71 83 162
         , roughness=0.6
         }
 
@@ -74,19 +85,13 @@ lightRed =
 bordeauxSphere:Scene3d.Entity WorldCoordinates
 bordeauxSphere =
     Scene3d.sphereWithShadow (Material.uniform bordeaux) <|
-        Sphere3d.withRadius (Length.centimeters 10) (Point3d.centimeters 20 20 0)
+        Sphere3d.withRadius (Length.centimeters 5) (Point3d.centimeters 0 0 20)
 
 
 
-
-quad:Scene3d.Entity WorldCoordinates
+quad:Body (World BodyCoordinates)
 quad =
-    Scene3d.quadWithShadow (Material.uniform lightRed)
-        (Point3d.centimeters 10 10 -5)
-        (Point3d.centimeters -10 10 0)
-        (Point3d.centimeters -10 -10 5)
-        (Point3d.centimeters 10 -10 0)
-
+    Physics.World.bodies ultramarineBlue Basics.floor
 
 -- RENDERING
 
@@ -97,10 +102,10 @@ camera model =
     Camera3d.perspective
         { viewpoint =
             Viewpoint3d.orbitZ
-                { focalPoint = Point3d.centimeters 0 0 -20
+                { focalPoint = Point3d.centimeters 0 0 0
                 , azimuth = model.azimuth
                 , elevation = model.elevation
-                , distance = Length.meters 2
+                , distance = Length.meters 3
                 }
         , verticalFieldOfView = Angle.degrees 30
         }
@@ -190,7 +195,7 @@ update msg model =
                     newElevation =
                         model.elevation
                             |> Quantity.plus (rotation dy)
-                            |> Quantity.clamp (Angle.degrees -90) (Angle.degrees 90)
+                            |> Quantity.clamp (Angle.degrees -180) (Angle.degrees 180)
                 in
                 ({model|azimuth=newAzimuth, elevation=newElevation}
                 ,Cmd.none
@@ -263,12 +268,12 @@ view model =
     in
     Html.div []
         -- マウス以外にも方向キー等で動かせるようにしたい。
-        [ Html.div [ Html.Events.onMouseDown KeyDown ]
+        [ Html.div [ Html.Events.onMouseOver KeyDown ]
             [ Scene3d.custom
                 { lights = Scene3d.twoLights lightBulb overheadLighting
                 , camera = camera model
                 , clipDepth = Length.meters 0.1
-                , dimensions = ( Pixels.int 640, Pixels.int 480 )
+                , dimensions = ( Pixels.int 1280, Pixels.int 680 )
                 , antialiasing = Scene3d.multisampling
                 , exposure = Scene3d.exposureValue model.exposureValue
                 , toneMapping = toneMapping
@@ -364,6 +369,7 @@ slider attributes { min, max } =
             []
 
 
+-- このcomboBoxを参考にしてこの赤い玉をボタンで動かす関数を作れるだろうか？
 comboBox : List (Html.Attribute a) -> (a -> String) -> List a -> a -> Html a
 comboBox attributes toStr allItems =
     let
