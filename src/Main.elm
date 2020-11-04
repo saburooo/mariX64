@@ -18,7 +18,6 @@ import Scene3d.Material as Material exposing (Material)
 import Color
 import Scene3d
 import Sphere3d exposing (Sphere3d)
-import Length exposing (Length)
 import Point3d exposing (Point3d)
 import Camera3d exposing (Camera3d)
 import Length exposing (Meters)
@@ -98,7 +97,7 @@ camera model =
     Camera3d.perspective
         { viewpoint =
             Viewpoint3d.orbitZ
-                { forcalPoint = Point3d.centimeters 0 0 -20
+                { focalPoint = Point3d.centimeters 0 0 -20
                 , azimuth = model.azimuth
                 , elevation = model.elevation
                 , distance = Length.meters 2
@@ -183,7 +182,7 @@ update msg model =
                         Angle.degrees 0.25 |> Quantity.per Pixels.pixel
                     
                     rotation numPixels = 
-                        numPixels |> Quantity.minus (rotation dx)
+                        numPixels |> Quantity.at rotationRate
 
                     newAzimuth =
                         model.azimuth |> Quantity.minus (rotation dx)
@@ -263,7 +262,7 @@ view model =
                     Scene3d.hableFilmicToneMapping
     in
     Html.div []
-        -- Start orbiting when the mouse is pressed on the scene
+        -- マウス以外にも方向キー等で動かせるようにしたい。
         [ Html.div [ Html.Events.onMouseDown KeyDown ]
             [ Scene3d.custom
                 { lights = Scene3d.twoLights lightBulb overheadLighting
@@ -278,7 +277,6 @@ view model =
                 , entities =
                     [ bordeauxSphere
                     , quad
-                    , floor
                     ]
                 }
             ]
