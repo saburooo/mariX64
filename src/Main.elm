@@ -43,6 +43,9 @@ import Illuminance
 import Direction3d
 import Physics.World exposing (World)
 
+import Json.Decode as Decode
+import Json.Decode exposing (string)
+
 
 main : Program () Model Msg
 main =
@@ -73,18 +76,62 @@ type alias Model =
 
 
 type Unit
-    = X 
-    | Y 
-    | Z 
+    = X Basics.Float 
+    | Y Basics.Float
+    | Z Basics.Float
 
 
 type ViewPoint
-    = ViewX
-    | ViewY
-    | ViewZ
+    = ViewX Float
+    | ViewY Float
+    | ViewZ Float
+
+
+type alias Position =
+    { x : Float
+    , y : Float
+    , z : Float
+    }
+
+
+
+type Command
+    = Speed Float
+    | Steer Float
+    | Jump Float
+
+
+-- Msgには何がいるのか
+
+
+keyDecoder : (Command -> Msg) -> Decode.Decoder Msg
+keyDecoder toMsg =
+    Decode.field "key" Decode.string
+        |> Decode.andThen
+            (\string ->
+                case string of
+                    "ArrowLeft" ->
+                        Decode.succeed (toMsg (Steer -1))
+
+                    "ArrowRight" ->
+                        Decode.succeed (toMsg (Steer 1))
+
+                    "ArrowUp" ->
+                        Decode.succeed (toMsg (Speed 1))
+
+                    "ArrowDown" ->
+                        Decode.succeed (toMsg (Speed -1))
+
+                    "SpaceKey" ->
+                        Decode.succeed (toMsg (Jump 1))
+                    
+                    _ ->
+                        Decode.fail ("何ボタンですか？:" ++ string)
+
+            )
 
 
 -- UPDATE
-
--- Msgには何がいるのか
 type Msg
+    = KeyDown Command
+    | KeyUp Command
