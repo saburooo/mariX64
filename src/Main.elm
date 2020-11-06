@@ -9,15 +9,9 @@ import Html exposing (Html)
 import Html.Events
 import Html.Attributes
 
-import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
 
 import Array
-
-import Block3d
-import Acceleration
-import Frame3d
-import Mass
 
 import Physics.Body as Body exposing (Body)
 import Physics.Coordinates exposing (BodyCoordinates, WorldCoordinates)
@@ -43,7 +37,7 @@ import Illuminance
 import Direction3d
 import Physics.World exposing (World)
 
-import Json.Decode as Decode exposing (Decode, string)
+import Json.Decode as Decode exposing (Decoder, string)
 
 
 main : Program () Model Msg
