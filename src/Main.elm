@@ -1,4 +1,4 @@
-module Main exposing (main)
+module Main exposing (..)
 
 -- まずは基盤を考えるところから・・・
 
@@ -38,6 +38,7 @@ import Direction3d
 import Physics.World exposing (World)
 
 import Json.Decode as Decode exposing (Decoder, string)
+import Html exposing (s)
 
 
 main : Program () Model Msg
@@ -48,7 +49,6 @@ main =
         , update = update
         , subscriptions = subscriptions
         }
-
 
 
 -- MODEL
@@ -96,8 +96,7 @@ type Command
 
 -- Msgには何がいるのか
 type Msg
-    = ForSettings 
-    | Tick Float -- 恐らく時間
+    = Tick Float -- 恐らく時間
     | KeyDown Command
     | KeyUp Command
 
@@ -130,4 +129,30 @@ keyDecoder toMsg =
 
 
 
+init : () -> ( Model, Cmd Msg )
+init _ =
+    Debug.todo "初期化するもの：プレイヤーの位置、カメラ、地面、敵"
+
 -- UPDATE
+update : Msg -> Model -> Model
+update msg model =
+    case msg of
+        Tick dt ->
+            Debug.todo "時を動かす"
+
+        KeyDown (Speed s) ->
+            Debug.todo "キャラクターの足を動かす。"
+
+        KeyUp (Speed s) ->
+            Debug.todo "キャラクターのどこかを動かす。"
+
+        KeyDown (Jump j) ->
+            Debug.todo "キャラクターをジャンプさせる。"
+
+
+
+-- VIEW
+view : Model -> Html Msg
+view model =
+    Html.div []
+        [ Debug.todo "Scene.viewを出す。"]
