@@ -43,8 +43,7 @@ import Illuminance
 import Direction3d
 import Physics.World exposing (World)
 
-import Json.Decode as Decode
-import Json.Decode exposing (string)
+import Json.Decode as Decode exposing (Decode, string)
 
 
 main : Program () Model Msg
@@ -102,6 +101,11 @@ type Command
 
 
 -- Msgには何がいるのか
+type Msg
+    = ForSettings 
+    | Tick Float -- 恐らく時間
+    | KeyDown Command
+    | KeyUp Command
 
 
 keyDecoder : (Command -> Msg) -> Decode.Decoder Msg
@@ -131,7 +135,5 @@ keyDecoder toMsg =
             )
 
 
+
 -- UPDATE
-type Msg
-    = KeyDown Command
-    | KeyUp Command
