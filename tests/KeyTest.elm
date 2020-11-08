@@ -24,5 +24,4 @@ suite =
         [ test "とりあえずやってみよう" <|
             \() ->
                 Expect.true "Key Downed" (keyBoolean (keyDecoder Main.KeyDown))
-        , todo "実際に画面表示して動かせるのかテスト"
         ]

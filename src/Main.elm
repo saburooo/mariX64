@@ -17,11 +17,11 @@ import Physics.Body as Body exposing (Body)
 import Physics.Coordinates exposing (BodyCoordinates, WorldCoordinates)
 import Physics.World as World exposing (World)
 
-import Scene3d.Mesh
-
-import Scene3d.Material as Material exposing (Material)
-import Color
 import Scene3d
+import Scene3d.Material as Material exposing (Material)
+import Scene3d.Mesh exposing (Mesh)
+
+import Color
 import Sphere3d exposing (Sphere3d)
 import Point3d exposing (Point3d)
 import Camera3d exposing (Camera3d)
@@ -35,10 +35,12 @@ import LuminousFlux
 import Illuminance
 
 import Direction3d
-import Physics.World exposing (World)
 
 import Json.Decode as Decode exposing (Decoder, string)
 import Html exposing (s)
+import Length exposing (Length)
+import Acceleration exposing (Acceleration)
+import Block3d exposing (Block3d)
 
 
 main : Program () Model Msg
@@ -46,7 +48,7 @@ main =
     Browser.element
         { init = init
         , view = view
-        , update = update
+        , update = \msg model -> ( update msg model, Cmd.none)
         , subscriptions = subscriptions
         }
 
@@ -59,12 +61,16 @@ type alias Data =
     }
 
 
+type WorldCoordinates
+    = WorldCoordinates
+
+
 type alias Model =
     { world : World Data
     , fps : List Float
-    , camera : Camera3d Unit ViewPoint -- Two arguments
-    , speeding : Float 
+    , speeding : Float
     , steeting : Float 
+    , jumping : Float 
     }
 
 
@@ -80,14 +86,6 @@ type ViewPoint
     | ViewZ Float
 
 
-type alias Position =
-    { x : Float
-    , y : Float
-    , z : Float
-    }
-
-
-
 type Command
     = Speed Float
     | Steer Float
@@ -99,6 +97,7 @@ type Msg
     = Tick Float -- 恐らく時間
     | KeyDown Command
     | KeyUp Command
+    | Restart
 
 
 keyDecoder : (Command -> Msg) -> Decode.Decoder Msg
@@ -131,7 +130,15 @@ keyDecoder toMsg =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    Debug.todo "初期化するもの：プレイヤーの位置、カメラ、地面、敵"
+    (
+    { world=initialWorld
+    , fps = []
+    , speeding=0
+    , steeting=0
+    , camera=camera
+    }
+    )
+
 
 -- UPDATE
 update : Msg -> Model -> Model
@@ -140,15 +147,33 @@ update msg model =
         Tick dt ->
             Debug.todo "時を動かす"
 
-        KeyDown (Speed s) ->
-            Debug.todo "キャラクターの足を動かす。"
+        KeyDown (Speed k) ->
+            { model | speeding=k }
 
-        KeyUp (Speed s) ->
-            Debug.todo "キャラクターのどこかを動かす。"
+        KeyDown (Steer k) ->
+            { model | steeting=k }
 
         KeyDown (Jump j) ->
-            Debug.todo "キャラクターをジャンプさせる。"
+            { model | jumping=j } 
 
+        KeyUp (Speed _) ->
+            { model | speeding=0}
+
+        KeyUp (Steer _) ->
+            { model | steeting=0}
+
+        KeyUp (Jump j) ->
+            { model | jumping=-j } 
+
+        Restart ->
+            { model | world=initialWorld } 
+
+
+
+-- SUBSCRIPTISONS
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.none    
 
 
 -- VIEW
@@ -156,3 +181,68 @@ view : Model -> Html Msg
 view model =
     Html.div []
         [ Debug.todo "Scene.viewを出す。"]
+
+
+-- WORLD
+initialWorld:World Data
+initialWorld=
+    World.empty
+        |> World.withGravity (Acceleration.metersPerSecondSquared 9.80665) Direction3d.negativeZ
+        |> World.add floorBody -- 床
+
+
+
+-- MATERIAL
+ultramarineBlue:Material.Uniform WorldCoordinates
+ultramarineBlue=
+    Material.metal
+        { baseColor=Color.rgb255 71 83 162
+        , roughness=0.5
+        }
+
+
+nibuiOrange:Material.Uniform WorldCoordinates
+nibuiOrange=
+    Material.metal
+        { baseColor=Color.rgb255 163 105 72
+        , roughness=0.5
+        }
+
+
+ultramarineBlueSphere:Scene3d.Entity WorldCoordinates
+ultramarineBlueSphere=
+    Scene3d.sphereWithShadow (Material.uniform ultramarineBlue) <|
+        Sphere3d.withRadius (Length.centimeters 10) (Point3d.centimeters 20 20 20)
+    
+
+
+floorOffset:{x:Float, y:Float,z:Float}
+floorOffset=
+    { x=0, y=0, z=-1 }
+
+
+
+floorBody:Body Data
+floorBody =
+    Body.plane { name="floorBody" }
+        |> Body.moveTo (Point3d.fromMeters floorOffset)
+
+
+
+-- RENDERING
+
+
+camera : Model -> Camera3d Meters WorldCoordinates
+camera model =
+    -- 俯瞰する類のカメラかな？
+    -- the model
+    Camera3d.perspective
+        { viewpoint =
+            Viewpoint3d.orbitZ
+                { focalPoint = Point3d.centimeters 0 0 -20
+                , azimuth = model.azimuth
+                , elevation = model.elevation
+                , distance = Length.meters 2
+                }
+        , verticalFieldOfView = Angle.degrees 30
+        }
