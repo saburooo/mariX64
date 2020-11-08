@@ -5,6 +5,8 @@ import Expect exposing (equal)
 import Json.Decode as Decode
 
 import Main exposing (Command, keyDecoder)
+import Test exposing (fuzz)
+import Json.Decode exposing (string)
 
 
 type TestKey
@@ -24,4 +26,9 @@ suite =
         [ test "とりあえずやってみよう" <|
             \() ->
                 Expect.true "Key Downed" (keyBoolean (keyDecoder Main.KeyDown))
+        {-
+        , fuzz string "とりあえずやってみよう" <|
+            \_ ->
+                Expect.true "Key Downed" (keyBoolean (keyDecoder Main.KeyDown))
+        -}
         ]

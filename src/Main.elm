@@ -4,6 +4,9 @@ module Main exposing (..)
 
 import Browser
 import Browser.Events
+import Browser.Dom
+
+import Task
 
 import Html exposing (Html)
 import Html.Events
@@ -71,6 +74,8 @@ type alias Model =
     , speeding : Float
     , steeting : Float 
     , jumping : Float 
+    , azimuth : Angle -- 方位
+    , elevation : Angle -- 高さ（ぐぐったら気高さとか高尚とか出てきた。)
     }
 
 
@@ -128,6 +133,16 @@ keyDecoder toMsg =
 
 
 
+
+
+measureSize : (Float -> Float -> msg) -> Cmd msg
+measureSize fn =
+    Task.perform
+        (\{ viewport } -> fn viewport.width viewport.height)
+        Browser.Dom.getViewport
+
+
+
 init : () -> ( Model, Cmd Msg )
 init _ =
     (
@@ -135,9 +150,13 @@ init _ =
     , fps = []
     , speeding=0
     , steeting=0
-    , camera=camera
+    , jumping=0
+    , azimuth=Angle.degrees 45
+    , elevation=Angle.degrees 45
     }
+    , Cmd.none
     )
+
 
 
 -- UPDATE
