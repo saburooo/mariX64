@@ -16,14 +16,19 @@ import Json.Encode as Encode
 
 import Array
 
-import Physics.Body as Body exposing (Body)
+import Physics.Body exposing (Body, frame, data, applyForce, translateBy, plane)
 import Physics.Coordinates exposing (BodyCoordinates, WorldCoordinates)
 import Physics.World as World exposing (World)
+import Physics.Constraint exposing (Constraint, hinge)
+
+import Force
 
 import Scene3d
 import Scene3d.Material as Material exposing (Material)
 import Scene3d.Mesh exposing (Mesh)
 import Scene3d.Light exposing (fluorescent)
+
+import Duration
 
 import Color
 import Sphere3d exposing (Sphere3d)
@@ -39,12 +44,16 @@ import LuminousFlux
 import Illuminance
 
 import Direction3d
+import Frame3d exposing (Frame3d)
+import Vector3d exposing (Vector3d)
 
 import Json.Decode as Decode exposing (Decoder, string)
 import Html exposing (s)
 import Length exposing (Length)
 import Acceleration exposing (Acceleration)
 import Block3d exposing (Block3d)
+import Axis3d
+import Fps exposing (update)
 
 
 main : Program () Model Msg
@@ -64,9 +73,6 @@ type alias Data =
     { name : String
     }
 
-
-type WorldCoordinates
-    = WorldCoordinates
 
 
 type alias Model =
@@ -163,11 +169,133 @@ init _ =
 
 
 -- UPDATE
+
+
+
+applySpeed : Float -> Frame3d Meters WorldCoordinates { defines : BodyCoordinates } -> Body Data -> Body Data
+applySpeed speed baseFrame body =
+    if speed /= 0 && ((data body).name == "wheel1" || (data body).name == "wheel2") then
+        let
+            forward =
+                Frame3d.yDirection baseFrame
+
+            up =
+                Frame3d.zDirection baseFrame
+
+            wheelPoint =
+                Frame3d.originPoint (frame body)
+
+            pointOnTheWheel =
+                wheelPoint |> Point3d.translateBy (Vector3d.withLength (Length.meters 1.2) up)
+
+            pointUnderTheWheel =
+                wheelPoint |> Point3d.translateBy (Vector3d.withLength (Length.meters 1.2) (Direction3d.reverse up))
+        in
+        body
+            |> applyForce (Force.newtons (-speed * 100)) forward pointOnTheWheel
+            |> applyForce (Force.newtons (-speed * 100)) (Direction3d.reverse forward) pointUnderTheWheel
+
+    else
+        body
+
+
+-- 本来は車のタイヤの動きを表現している。
+constrainCar : Float -> Body Data -> Body Data -> List Constraint
+constrainCar steering b1 b2 =
+    let
+        steeringAngle =
+            steering * pi / 8
+
+        dx =
+            cos steeringAngle
+
+        dy =
+            sin steeringAngle
+
+        hinge1 =
+            hinge
+                (Axis3d.through
+                    (Point3d.meters 3 3 0)
+                    (Direction3d.unsafe { x = 1, y = 0, z = 0 })
+                )
+                (Axis3d.through
+                    (Point3d.meters 0 0 0)
+                    (Direction3d.unsafe { x = -1, y = 0, z = 0 })
+                )
+
+        hinge2 =
+            hinge
+                (Axis3d.through
+                    (Point3d.meters -3 3 0)
+                    (Direction3d.unsafe { x = -1, y = 0, z = 0 })
+                )
+                (Axis3d.through
+                    Point3d.origin
+                    (Direction3d.unsafe { x = 1, y = 0, z = 0 })
+                )
+
+        hinge3 =
+            hinge
+                (Axis3d.through
+                    (Point3d.meters -3 -3 0)
+                    (Direction3d.unsafe { x = -dx, y = dy, z = 0 })
+                )
+                (Axis3d.through
+                    Point3d.origin
+                    (Direction3d.unsafe { x = 1, y = 0, z = 0 })
+                )
+
+        hinge4 =
+            hinge
+                (Axis3d.through
+                    (Point3d.meters 3 -3 0)
+                    (Direction3d.unsafe { x = -dx, y = dy, z = 0 })
+                )
+                (Axis3d.through
+                    Point3d.origin
+                    (Direction3d.unsafe { x = -1, y = 0, z = 0 })
+                )
+    in
+    case ( (data b1).name, (data b2).name ) of
+        ( "base", "wheel1" ) ->
+            [ hinge1 ]
+
+        ( "base", "wheel2" ) ->
+            [ hinge2 ]
+
+        ( "base", "wheel3" ) ->
+            [ hinge3 ]
+
+        ( "base", "wheel4" ) ->
+            [ hinge4 ]
+
+        _ ->
+            []
+
+
+
+
 update : Msg -> Model -> Model
 update msg model =
     case msg of
         Tick dt ->
-            Debug.todo "時を動かす"
+            { model
+                | fps = Fps.update dt model.fps
+                , world =
+                    let
+                        baseFrame =
+                            model.world
+                                |> World.bodies
+                                |> List.filter (\b -> (data b).name == "base")
+                                |> List.head
+                                |> Maybe.map (\b -> frame b)
+                                |> Maybe.withDefault Frame3d.atOrigin
+                    in
+                    model.world
+                        |> World.constrain (constrainCar model.steering)
+                        |> World.update (applySpeed model.speeding baseFrame)
+                        |> World.simulate (Duration.seconds (1 / 60))
+            }
 
         KeyDown (Speed k) ->
             { model | speeding=k }
@@ -231,7 +359,7 @@ view model =
             { lights = Scene3d.twoLights lightBulb overheadLighting
             , camera = camera model
             , clipDepth = Length.meters 0.1
-            , dimensions = ( Pixels.int 640, Pixels.int 480 )
+            , dimensions = ( Pixels.int 1280, Pixels.int 640 )
             , antialiasing = Scene3d.multisampling
             , exposure = Scene3d.exposureValue model.exposureValue
             , toneMapping = Scene3d.noToneMapping
@@ -276,8 +404,9 @@ nibuiOrangeFloor:Scene3d.Entity WorldCoordinates
 nibuiOrangeFloor=
     Scene3d.block nibuiOrange <|
         Block3d.from
-            (Point3d.centimeters -55 -55 -22)
-            (Point3d.centimeters 55 55 -20)
+            (Point3d.centimeters -155 -155 -2)
+            (Point3d.centimeters 155 155 0)
+
 
 
 ultramarineBlueSphere:Scene3d.Entity WorldCoordinates
@@ -293,10 +422,11 @@ floorOffset=
 
 
 
-floorBody:Body Data
+floorBody:Body BodyCoordinates
 floorBody =
-    Body.plane { name="floorBody" }
-        |> Body.moveTo (Point3d.fromMeters floorOffset)
+    nibuiOrange Basics.floor
+        |> plane
+        |> translateBy (Vector3d.meters 0 0 -4)
 
 
 
