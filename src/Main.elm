@@ -23,6 +23,7 @@ import Physics.World as World exposing (World)
 import Scene3d
 import Scene3d.Material as Material exposing (Material)
 import Scene3d.Mesh exposing (Mesh)
+import Scene3d.Light exposing (fluorescent)
 
 import Color
 import Sphere3d exposing (Sphere3d)
@@ -104,6 +105,8 @@ type Msg
     | KeyDown Command
     | KeyUp Command
     | Restart
+
+
 
 
 keyDecoder : (Command -> Msg) -> Decode.Decoder Msg
@@ -199,22 +202,46 @@ subscriptions _ =
 
 
 -- VIEW
+
+lightBulb : Light WorldCoordinates Bool
+lightBulb =
+    -- Define a light bulb similar to a 30 watt incandescent light bulb
+    Scene3d.Light.point (Scene3d.Light.castsShadows True)
+        { chromaticity = Scene3d.Light.incandescent
+        , intensity = LuminousFlux.lumens 300
+        , position = Point3d.centimeters 0 0 30
+        }
+
+
+overheadLighting : Light WorldCoordinates Never
+overheadLighting =
+    -- Add some soft overhead lighting
+    Scene3d.Light.overhead
+        { upDirection = Direction3d.positiveZ
+        , chromaticity = Scene3d.Light.fluorescent
+        , intensity = Illuminance.lux 100
+        }
+
+
+
 view : Model -> Html Msg
 view model =
     Html.div []
         [ Scene3d.custom -- ここでやっと３Dを実装する。
-            { lights = Scene3d.twoLights
+            { lights = Scene3d.twoLights lightBulb overheadLighting
             , camera = camera model
             , clipDepth = Length.meters 0.1
             , dimensions = ( Pixels.int 640, Pixels.int 480 )
             , antialiasing = Scene3d.multisampling
             , exposure = Scene3d.exposureValue model.exposureValue
-            , toneMapping = toneMapping
-            , whiteBalance = Light.fluorescent
+            , toneMapping = Scene3d.noToneMapping
+            , whiteBalance = fluorescent
             , background = Scene3d.transparentBackground
             , entities =
-                [ goldSphere
+                [ ultramarineBlueSphere -- このリストに入れたい物質を入れる。
+                , nibuiOrangeFloor
                 ]
+            }
         ]
 
 
@@ -243,6 +270,14 @@ nibuiOrange=
         { baseColor=Color.rgb255 163 105 72
         , roughness=0.5
         }
+
+
+nibuiOrangeFloor:Scene3d.Entity WorldCoordinates
+nibuiOrangeFloor=
+    Scene3d.block nibuiOrange <|
+        Block3d.from
+            (Point3d.centimeters -55 -55 -22)
+            (Point3d.centimeters 55 55 -20)
 
 
 ultramarineBlueSphere:Scene3d.Entity WorldCoordinates
@@ -275,10 +310,10 @@ camera model =
     Camera3d.perspective
         { viewpoint =
             Viewpoint3d.orbitZ
-                { focalPoint = Point3d.centimeters 0 0 -20
+                { focalPoint = Point3d.centimeters 0 0 -30
                 , azimuth = model.azimuth
                 , elevation = model.elevation
-                , distance = Length.meters 2
+                , distance = Length.meters 3
                 }
         , verticalFieldOfView = Angle.degrees 30
         }
