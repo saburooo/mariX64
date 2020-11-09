@@ -292,7 +292,7 @@ update msg model =
                                 |> Maybe.withDefault Frame3d.atOrigin
                     in
                     model.world
-                        |> World.constrain (constrainCar model.steering)
+                        |> World.constrain (constrainCar model.steeting)
                         |> World.update (applySpeed model.speeding baseFrame)
                         |> World.simulate (Duration.seconds (1 / 60))
             }
@@ -374,7 +374,7 @@ view model =
 
 
 -- WORLD
-initialWorld:World Data
+initialWorld: World BodyCoordinates
 initialWorld=
     World.empty
         |> World.withGravity (Acceleration.metersPerSecondSquared 9.80665) Direction3d.negativeZ
@@ -424,7 +424,7 @@ floorOffset=
 
 floorBody:Body BodyCoordinates
 floorBody =
-    nibuiOrange Basics.floor
+    Basics.floor
         |> plane
         |> translateBy (Vector3d.meters 0 0 -4)
 
