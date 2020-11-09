@@ -56,6 +56,7 @@ import Axis3d
 import Fps exposing (update)
 
 
+
 main : Program () Model Msg
 main =
     Browser.element
@@ -424,7 +425,7 @@ floorOffset=
 
 floorBody:Body BodyCoordinates
 floorBody =
-    Basics.floor
+    Basics.floor 
         |> plane
         |> translateBy (Vector3d.meters 0 0 -4)
 
