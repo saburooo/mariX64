@@ -54,6 +54,12 @@ import Length exposing (Length)
 import Acceleration exposing (Acceleration)
 import Block3d exposing (Block3d)
 import Axis3d
+import Html.Attributes exposing (width)
+import Html.Attributes exposing (height)
+import Point2d exposing (pixels)
+import Point2d exposing (meters)
+import Point2d exposing (millimeters)
+import Html.Attributes exposing (shape)
 
 
 
@@ -70,9 +76,16 @@ main =
 -- MODEL
 
 
+-- IDで役割を分ける。
+type Id
+    = Key
+    | Player
+    | Floor
+
+
 type alias Data =
     { entity : Scene3d.Entity BodyCoordinates
-    , command : Command
+    , id : Id
     }
 
 
@@ -85,6 +98,8 @@ type alias Model =
     , jumping : Float 
     , azimuth : Angle -- 方位
     , elevation : Angle -- 高さ（ぐぐったら気高さとか高尚とか出てきた。)
+    , width : Quantity Float Pixels
+    , height : Quantity Float Pixels
     }
 
 
@@ -134,18 +149,46 @@ keyDecoder toMsg =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    (
-    { world=initialWorld
+    ({ world=initialWorld
     , speeding=0
     , steeting=0
     , jumping=0
     , azimuth=Angle.degrees 45
     , elevation=Angle.degrees 45
     , exposureValue= 6
+    , width=pixels 0
+    , height=pixels 0
     }
     , Cmd.none
     )
 
+
+initialWorld: World Data
+initialWorld=
+    World.empty
+        |> World.withGravity 
+            (Acceleration.metersPerSecondSquared 9.80665)
+            Direction3d.negativeZ
+        |> World.add player
+        |> World.add floor
+
+
+-- Worldに召喚されるもの
+player:Body Data
+player=
+    let
+        heroModel =
+            Block3d.centeredOn Frame3d.atOrigin
+                (millimeters 35, millimeters 35, millimeters 15)
+    in
+    plane
+        { id = Player
+        , entity=
+            shape
+                |> Scene3d.block (Material.matte Color.blue)
+                |> Scene3d.translateBy (Vector3d.millimeters 0 0 -5)
+            }
+    
 
 
 -- UPDATE
@@ -243,12 +286,6 @@ view model =
 
 
 -- WORLD
-initialWorld: World BodyCoordinates
-initialWorld=
-    World.empty
-        |> World.withGravity (Acceleration.metersPerSecondSquared 9.80665) Direction3d.negativeZ
-        |> World.add floorBody -- 床
-
 
 
 -- MATERIAL
@@ -289,13 +326,6 @@ floorOffset:{x:Float, y:Float,z:Float}
 floorOffset=
     { x=0, y=0, z=-1 }
 
-
-
-floorBody:Body BodyCoordinates
-floorBody =
-    Basics.floor 
-        |> plane
-        |> translateBy (Vector3d.meters 0 0 -4)
 
 
 
