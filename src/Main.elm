@@ -29,6 +29,7 @@ import Scene3d.Mesh exposing (Mesh)
 import Scene3d.Light exposing (fluorescent)
 
 import Duration
+import Duration exposing (seconds)
 
 import Color
 import Sphere3d exposing (Sphere3d)
@@ -53,7 +54,6 @@ import Length exposing (Length)
 import Acceleration exposing (Acceleration)
 import Block3d exposing (Block3d)
 import Axis3d
-import Fps exposing (update)
 
 
 
@@ -71,7 +71,8 @@ main =
 
 
 type alias Data =
-    { name : String
+    { entity : Scene3d.Entity BodyCoordinates
+    , command : Command
     }
 
 
@@ -79,7 +80,6 @@ type alias Data =
 type alias Model =
     { world : World Data
     , exposureValue : Float
-    , fps : List Float
     , speeding : Float
     , steeting : Float 
     , jumping : Float 
@@ -88,27 +88,17 @@ type alias Model =
     }
 
 
-type Unit
-    = X Basics.Float 
-    | Y Basics.Float
-    | Z Basics.Float
-
-
-type ViewPoint
-    = ViewX Float
-    | ViewY Float
-    | ViewZ Float
-
-
 type Command
     = Speed Float
     | Steer Float
     | Jump Float
 
 
+
 -- Msgには何がいるのか
 type Msg
-    = Tick Float -- 恐らく時間
+    = AnimationFrame
+    | Resize (Quantity Float Pixels) (Quantity Float Pixels)
     | KeyDown Command
     | KeyUp Command
     | Restart
@@ -139,24 +129,13 @@ keyDecoder toMsg =
                     
                     _ ->
                         Decode.fail ("何ボタンですか？:" ++ string)
-
             )
-
-
-
-measureSize : (Float -> Float -> msg) -> Cmd msg
-measureSize fn =
-    Task.perform
-        (\{ viewport } -> fn viewport.width viewport.height)
-        Browser.Dom.getViewport
-
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
     (
     { world=initialWorld
-    , fps = []
     , speeding=0
     , steeting=0
     , jumping=0
@@ -171,132 +150,14 @@ init _ =
 
 -- UPDATE
 
-
-
-applySpeed : Float -> Frame3d Meters WorldCoordinates { defines : BodyCoordinates } -> Body Data -> Body Data
-applySpeed speed baseFrame body =
-    if speed /= 0 && ((data body).name == "wheel1" || (data body).name == "wheel2") then
-        let
-            forward =
-                Frame3d.yDirection baseFrame
-
-            up =
-                Frame3d.zDirection baseFrame
-
-            wheelPoint =
-                Frame3d.originPoint (frame body)
-
-            pointOnTheWheel =
-                wheelPoint |> Point3d.translateBy (Vector3d.withLength (Length.meters 1.2) up)
-
-            pointUnderTheWheel =
-                wheelPoint |> Point3d.translateBy (Vector3d.withLength (Length.meters 1.2) (Direction3d.reverse up))
-        in
-        body
-            |> applyForce (Force.newtons (-speed * 100)) forward pointOnTheWheel
-            |> applyForce (Force.newtons (-speed * 100)) (Direction3d.reverse forward) pointUnderTheWheel
-
-    else
-        body
-
-
--- 本来は車のタイヤの動きを表現している。
-constrainCar : Float -> Body Data -> Body Data -> List Constraint
-constrainCar steering b1 b2 =
-    let
-        steeringAngle =
-            steering * pi / 8
-
-        dx =
-            cos steeringAngle
-
-        dy =
-            sin steeringAngle
-
-        hinge1 =
-            hinge
-                (Axis3d.through
-                    (Point3d.meters 3 3 0)
-                    (Direction3d.unsafe { x = 1, y = 0, z = 0 })
-                )
-                (Axis3d.through
-                    (Point3d.meters 0 0 0)
-                    (Direction3d.unsafe { x = -1, y = 0, z = 0 })
-                )
-
-        hinge2 =
-            hinge
-                (Axis3d.through
-                    (Point3d.meters -3 3 0)
-                    (Direction3d.unsafe { x = -1, y = 0, z = 0 })
-                )
-                (Axis3d.through
-                    Point3d.origin
-                    (Direction3d.unsafe { x = 1, y = 0, z = 0 })
-                )
-
-        hinge3 =
-            hinge
-                (Axis3d.through
-                    (Point3d.meters -3 -3 0)
-                    (Direction3d.unsafe { x = -dx, y = dy, z = 0 })
-                )
-                (Axis3d.through
-                    Point3d.origin
-                    (Direction3d.unsafe { x = 1, y = 0, z = 0 })
-                )
-
-        hinge4 =
-            hinge
-                (Axis3d.through
-                    (Point3d.meters 3 -3 0)
-                    (Direction3d.unsafe { x = -dx, y = dy, z = 0 })
-                )
-                (Axis3d.through
-                    Point3d.origin
-                    (Direction3d.unsafe { x = -1, y = 0, z = 0 })
-                )
-    in
-    case ( (data b1).name, (data b2).name ) of
-        ( "base", "wheel1" ) ->
-            [ hinge1 ]
-
-        ( "base", "wheel2" ) ->
-            [ hinge2 ]
-
-        ( "base", "wheel3" ) ->
-            [ hinge3 ]
-
-        ( "base", "wheel4" ) ->
-            [ hinge4 ]
-
-        _ ->
-            []
-
-
-
-
 update : Msg -> Model -> Model
 update msg model =
     case msg of
-        Tick dt ->
-            { model
-                | fps = Fps.update dt model.fps
-                , world =
-                    let
-                        baseFrame =
-                            model.world
-                                |> World.bodies
-                                |> List.filter (\b -> (data b).name == "base")
-                                |> List.head
-                                |> Maybe.map (\b -> frame b)
-                                |> Maybe.withDefault Frame3d.atOrigin
-                    in
-                    model.world
-                        |> World.constrain (constrainCar model.steeting)
-                        |> World.update (applySpeed model.speeding baseFrame)
-                        |> World.simulate (Duration.seconds (1 / 60))
-            }
+        AnimationFrame ->
+            { model | world = World.simulate (seconds (1 / 60)) model.world }
+
+        Resize width height ->
+            { model | width = width, height = height }
 
         KeyDown (Speed k) ->
             { model | speeding=k }
@@ -355,6 +216,16 @@ overheadLighting =
 
 view : Model -> Html Msg
 view model =
+    let
+        entities =
+            List.map
+                (\body ->
+                    Scene3d.placeIn
+                        (frame body)
+                        (data body).entity
+                )
+                (World.bodies model.world)
+    in
     Html.div []
         [ Scene3d.custom -- ここでやっと３Dを実装する。
             { lights = Scene3d.twoLights lightBulb overheadLighting
@@ -366,10 +237,7 @@ view model =
             , toneMapping = Scene3d.noToneMapping
             , whiteBalance = fluorescent
             , background = Scene3d.transparentBackground
-            , entities =
-                [ ultramarineBlueSphere -- このリストに入れたい物質を入れる。
-                , nibuiOrangeFloor
-                ]
+            , entities = entities
             }
         ]
 
