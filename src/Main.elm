@@ -35,14 +35,18 @@ import Color
 import Sphere3d exposing (Sphere3d)
 import Point3d exposing (Point3d)
 import Camera3d exposing (Camera3d)
-import Length exposing (Meters)
+import Length exposing (Meters, meters, millimeters)
 import Viewpoint3d exposing (Viewpoint3d)
 import Angle exposing (Angle)
 import Scene3d.Light exposing (Light)
 import Quantity exposing (Quantity)
-import Pixels exposing (Pixels)
+import Pixels exposing (Pixels, pixels)
 import LuminousFlux
 import Illuminance
+
+import Point2d
+
+import Rectangle2d
 
 import Direction3d
 import Frame3d exposing (Frame3d)
@@ -53,13 +57,13 @@ import Html exposing (s)
 import Length exposing (Length)
 import Acceleration exposing (Acceleration)
 import Block3d exposing (Block3d)
-import Axis3d
+import Axis3d exposing (Axis3d)
 import Html.Attributes exposing (width)
 import Html.Attributes exposing (height)
-import Point2d exposing (pixels)
-import Point2d exposing (meters)
-import Point2d exposing (millimeters)
 import Html.Attributes exposing (shape)
+import Task
+import Browser.Dom exposing (Viewport)
+import Html.Events
 
 
 
@@ -67,9 +71,9 @@ main : Program () Model Msg
 main =
     Browser.element
         { init = init
-        , view = view
-        , update = \msg model -> ( update msg model, Cmd.none)
         , subscriptions = subscriptions
+        , update = \msg model -> ( update msg model, Cmd.none)
+        , view = view
         }
 
 
@@ -119,8 +123,6 @@ type Msg
     | Restart
 
 
-
-
 keyDecoder : (Command -> Msg) -> Decode.Decoder Msg
 keyDecoder toMsg =
     Decode.field "key" Decode.string
@@ -159,10 +161,16 @@ init _ =
     , width=pixels 0
     , height=pixels 0
     }
-    , Cmd.none
+    , Task.perform
+        (\{ viewport } ->
+            Resize (pixels viewport.width) (pixels viewport.height)
+        )
+        Browser.Dom.getViewport
     )
 
 
+
+-- WORLD
 initialWorld: World Data
 initialWorld=
     World.empty
@@ -170,28 +178,48 @@ initialWorld=
             (Acceleration.metersPerSecondSquared 9.80665)
             Direction3d.negativeZ
         |> World.add player
-        |> World.add floor
+        |> World.add floorBody
+
 
 
 -- Worldに召喚されるもの
+-- MATERIAL
 player:Body Data
 player=
     let
         heroModel =
             Block3d.centeredOn Frame3d.atOrigin
-                (millimeters 35, millimeters 35, millimeters 15)
+                (millimeters 85, millimeters 85, millimeters 85)
     in
     plane
         { id = Player
         , entity=
-            shape
+            heroModel
                 |> Scene3d.block (Material.matte Color.blue)
-                |> Scene3d.translateBy (Vector3d.millimeters 0 0 -5)
+                |> Scene3d.translateBy (Vector3d.millimeters 10 10 -10)
             }
-    
+
+
+
+
+floorBody : Body Data
+floorBody =
+    let
+        shape =
+            Block3d.centeredOn Frame3d.atOrigin
+                ( meters 25, meters 25, millimeters 10 )
+    in
+    plane
+        { id = Floor
+        , entity =
+            shape
+                |> Scene3d.block (Material.matte Color.darkCharcoal)
+                |> Scene3d.translateBy (Vector3d.millimeters 0 0 -85)
+        }
 
 
 -- UPDATE
+
 
 update : Msg -> Model -> Model
 update msg model =
@@ -269,7 +297,7 @@ view model =
                 )
                 (World.bodies model.world)
     in
-    Html.div []
+    Html.div [ ]
         [ Scene3d.custom -- ここでやっと３Dを実装する。
             { lights = Scene3d.twoLights lightBulb overheadLighting
             , camera = camera model
@@ -283,49 +311,6 @@ view model =
             , entities = entities
             }
         ]
-
-
--- WORLD
-
-
--- MATERIAL
-
-ultramarineBlue:Material.Uniform WorldCoordinates
-ultramarineBlue=
-    Material.metal
-        { baseColor=Color.rgb255 71 83 162
-        , roughness=0.5
-        }
-
-
-nibuiOrange:Material.Uniform WorldCoordinates
-nibuiOrange=
-    Material.metal
-        { baseColor=Color.rgb255 163 105 72
-        , roughness=0.5
-        }
-
-
-nibuiOrangeFloor:Scene3d.Entity WorldCoordinates
-nibuiOrangeFloor=
-    Scene3d.block nibuiOrange <|
-        Block3d.from
-            (Point3d.centimeters -155 -155 -2)
-            (Point3d.centimeters 155 155 0)
-
-
-
-ultramarineBlueSphere:Scene3d.Entity WorldCoordinates
-ultramarineBlueSphere=
-    Scene3d.sphereWithShadow (Material.uniform ultramarineBlue) <|
-        Sphere3d.withRadius (Length.centimeters 10) (Point3d.centimeters 20 20 20)
-    
-
-
-floorOffset:{x:Float, y:Float,z:Float}
-floorOffset=
-    { x=0, y=0, z=-1 }
-
 
 
 
