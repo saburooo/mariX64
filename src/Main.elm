@@ -16,7 +16,8 @@ import Json.Encode as Encode
 
 import Array
 
-import Physics.Body exposing (Body, frame, data, applyForce, translateBy, plane)
+import Physics.Body exposing (Body, compound, frame, data, applyForce, translateBy, plane)
+import Physics.Body as Body
 import Physics.Coordinates exposing (BodyCoordinates, WorldCoordinates)
 import Physics.World as World exposing (World, RaycastResult)
 import Physics.Constraint exposing (Constraint, hinge)
@@ -45,6 +46,7 @@ import LuminousFlux
 import Illuminance
 
 import Point2d
+import Plane3d
 
 import Rectangle2d
 
@@ -53,7 +55,7 @@ import Frame3d exposing (Frame3d)
 import Vector3d exposing (Vector3d)
 
 import Json.Decode as Decode exposing (Decoder, string)
-import Html exposing (s)
+import Html
 import Length exposing (Length)
 import Acceleration exposing (Acceleration)
 import Block3d exposing (Block3d)
@@ -64,6 +66,8 @@ import Html.Attributes exposing (shape)
 import Task
 import Browser.Dom exposing (Viewport)
 import Html.Events
+import Direction3d exposing (azimuthIn)
+import Point2d exposing (Point2d)
 
 
 
@@ -99,7 +103,6 @@ type alias Model =
     { world : World Data
     , exposureValue : Float
     , maybeRaycastResult : Maybe (RaycastResult Data)
-    , elevation : Angle -- 高さ（ぐぐったら気高さとか高尚とか出てきた。)
     , width : Quantity Float Pixels
     , height : Quantity Float Pixels
     }
@@ -111,49 +114,19 @@ type Msg
     = AnimationFrame
     | Resize (Quantity Float Pixels) (Quantity Float Pixels)
     | KeyDown (Axis3d Meters WorldCoordinates)
-    | KeyUp (Axis3d Meters WorldCoordinates)
+    | KeyUp
     | Restart
 
-
--- ココ書き換える
-keyDecoder : (Command -> Msg) -> Decode.Decoder Msg
-keyDecoder toMsg =
-    Decode.field "key" Decode.string
-        |> Decode.andThen
-            (\string ->
-                case string of
-                    "ArrowLeft" ->
-                        Decode.succeed (toMsg (Steer -1))
-
-                    "ArrowRight" ->
-                        Decode.succeed (toMsg (Steer 1))
-
-                    "ArrowUp" ->
-                        Decode.succeed (toMsg (Speed 1))
-
-                    "ArrowDown" ->
-                        Decode.succeed (toMsg (Speed -1))
-
-                    "SpaceKey" ->
-                        Decode.succeed (toMsg (Jump 1))
-                    
-                    _ ->
-                        Decode.fail ("何ボタンですか？:" ++ string)
-            )
 
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
     ({ world=initialWorld
-    , speeding=0
-    , steeting=0
-    , jumping=0
-    , azimuth=Angle.degrees 45
-    , elevation=Angle.degrees 45
-    , exposureValue= 6
     , width=pixels 0
     , height=pixels 0
+    , maybeRaycastResult = Nothing
+    , exposureValue = 0
     }
     , Task.perform
         (\{ viewport } ->
@@ -189,7 +162,7 @@ player=
         { id = Player
         , entity=
             heroModel
-                |> Scene3d.block (Material.matte Color.blue)
+                |> Scene3d.block (Material.metal { baseColor = Color.blue, roughness = 0.7 })
                 |> Scene3d.translateBy (Vector3d.millimeters 10 10 -10)
             }
 
@@ -213,6 +186,40 @@ floorBody =
 
 
 key:Body Data
+key =
+    compound []
+        { id = Key
+        , entity =
+            Scene3d.sphere (Material.matte Color.white)
+                (Sphere3d.atOrigin (millimeters 20))}
+
+
+decodeKeyRay:
+    Camera3d Meters WorldCoordinates
+    -> Quantity Float Pixels
+    -> Quantity Float Pixels
+    -> (Axis3d Meters WorldCoordinates -> msg)
+    -> Decode.Decoder msg
+decodeKeyRay camera3d width height rayToMsg =
+    Decode.map2
+        (\x y ->
+            rayToMsg
+                (Camera3d.ray
+                    camera3d
+                    (Rectangle2d.with
+                        { x1 = pixels 0
+                        , y1 = height
+                        , x2 = width
+                        , y2 = pixels 0
+                        }
+                    )
+                    (Point2d.pixels x y)
+                )
+        )
+        -- おそらくここにイベントリスナを書く
+        (Decode.field "leftKey" Decode.float)
+        (Decode.field "rightKey" Decode.float)
+
 
 
 -- UPDATE
@@ -229,43 +236,35 @@ update msg model =
 
         -- 書き直し箇所その2 ここをelm-physicsのLack.elのupdate関数を参考に書き換える
         KeyDown keyRay ->
-            let
-                maybeRaycastResult =
-                    model.world
-                        |> World.keepIf
-                            (\body -> (Body.data body).id == Player)
-                        |> World.raycast keyRay
-            in
-            case maybeRaycastResult of
-                Just RaycastResult ->
+            case model.maybeRaycastResult of
+                Just raycastResult ->
                     let
                         worldPoint =
                             Point3d.placeIn
                                 (Body.frame raycastResult.body)
                                 raycastResult.point
 
-                        selectedId =
-                            (Body.data raycastResult.body).id
+                        plane =
+                            Plane3d.through
+                                worldPoint
+                                (Viewpoint3d.viewDirection (Camera3d.viewpoint camera))
                     in
                     { model
-                        | maybeRaycastResult = Just raycastResult
-                        , world =
-                            model.world
-                                |> World.add (Body.moveTo worldPoint key) -- key関数を後で追加
-                                |> World.constrain
-                                    (\b1 b2 ->
-                                        if
-                                            ((Body.data b1).id == Mouse)
-                                                && ((Body.data b2).id == selectedId)
-                                        then
-                                            [ Physics.Constraint.pointToPoint
-                                                Point3d.origin
-                                                raycastResult.point
-                                            ]
+                        | world =
+                            World.update
+                                (\body ->
+                                    if (Body.data body).id == Key then
+                                        case Axis3d.intersectionWithPlane plane keyRay of
+                                            Just intersection ->
+                                                Body.moveTo intersection body
 
-                                        else
-                                            []
-                                    )
+                                            Nothing ->
+                                                body
+
+                                    else
+                                        body
+                                )
+                                model.world
                     }
 
                 Nothing ->
@@ -276,7 +275,7 @@ update msg model =
                 | maybeRaycastResult = Nothing
                 , world =
                     World.keepIf
-                        (\body -> (Body.data body).id /= Mouse)
+                        (\body -> (Body.data body).id /= Key)
                         model.world
             }
 
@@ -332,37 +331,37 @@ view model =
                 )
                 (World.bodies model.world)
     in
-    Html.div [ onKeyPress KeyDown ]
-        [ Scene3d.custom -- ここでやっと３Dを実装する。
-            { lights = Scene3d.twoLights lightBulb overheadLighting
-            , camera = camera model
-            , clipDepth = Length.meters 0.1
-            , dimensions = ( Pixels.int 1280, Pixels.int 640 )
-            , antialiasing = Scene3d.multisampling
-            , exposure = Scene3d.exposureValue model.exposureValue
-            , toneMapping = Scene3d.noToneMapping
-            , whiteBalance = fluorescent
-            , background = Scene3d.transparentBackground
-            , entities = entities
-            }
-        ]
+    Html.div [ ]
+            [ Scene3d.sunny
+                { upDirection = Direction3d.z
+                , sunlightDirection = Direction3d.xyZ (Angle.degrees 135) (Angle.degrees -60)
+                , shadows = True
+                , camera = camera
+                , dimensions =
+                    ( Pixels.int (round (Pixels.toFloat model.width))
+                    , Pixels.int (round (Pixels.toFloat model.height))
+                    )
+                , background = Scene3d.transparentBackground
+                , clipDepth = Length.meters 0.1
+                , entities = entities
+                }
+            ]
 
 
 
 -- RENDERING
 
 
-camera : Model -> Camera3d Meters WorldCoordinates
-camera model =
+camera : Camera3d Meters WorldCoordinates
+camera =
     -- 俯瞰する類のカメラかな？
     -- the model
     Camera3d.perspective
         { viewpoint =
-            Viewpoint3d.orbitZ
-                { focalPoint = Point3d.centimeters 0 0 -30
-                , azimuth = model.azimuth
-                , elevation = model.elevation
-                , distance = Length.meters 3
+            Viewpoint3d.lookAt
+                { eyePoint = Point3d.meters 3 4 2
+                , focalPoint = Point3d.meters -0.5 -0.5 0
+                , upDirection = Direction3d.positiveZ
                 }
         , verticalFieldOfView = Angle.degrees 30
         }
