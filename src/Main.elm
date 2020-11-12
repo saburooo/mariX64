@@ -18,7 +18,7 @@ import Array
 
 import Physics.Body exposing (Body, frame, data, applyForce, translateBy, plane)
 import Physics.Coordinates exposing (BodyCoordinates, WorldCoordinates)
-import Physics.World as World exposing (World)
+import Physics.World as World exposing (World, RaycastResult)
 import Physics.Constraint exposing (Constraint, hinge)
 
 import Force
@@ -87,6 +87,7 @@ type Id
     | Floor
 
 
+
 type alias Data =
     { entity : Scene3d.Entity BodyCoordinates
     , id : Id
@@ -97,20 +98,11 @@ type alias Data =
 type alias Model =
     { world : World Data
     , exposureValue : Float
-    , speeding : Float
-    , steeting : Float 
-    , jumping : Float 
-    , azimuth : Angle -- 方位
+    , maybeRaycastResult : Maybe (RaycastResult Data)
     , elevation : Angle -- 高さ（ぐぐったら気高さとか高尚とか出てきた。)
     , width : Quantity Float Pixels
     , height : Quantity Float Pixels
     }
-
-
-type Command
-    = Speed Float
-    | Steer Float
-    | Jump Float
 
 
 
@@ -118,11 +110,12 @@ type Command
 type Msg
     = AnimationFrame
     | Resize (Quantity Float Pixels) (Quantity Float Pixels)
-    | KeyDown Command
-    | KeyUp Command
+    | KeyDown (Axis3d Meters WorldCoordinates)
+    | KeyUp (Axis3d Meters WorldCoordinates)
     | Restart
 
 
+-- ココ書き換える
 keyDecoder : (Command -> Msg) -> Decode.Decoder Msg
 keyDecoder toMsg =
     Decode.field "key" Decode.string
@@ -147,6 +140,7 @@ keyDecoder toMsg =
                     _ ->
                         Decode.fail ("何ボタンですか？:" ++ string)
             )
+
 
 
 init : () -> ( Model, Cmd Msg )
@@ -218,6 +212,9 @@ floorBody =
         }
 
 
+key:Body Data
+
+
 -- UPDATE
 
 
@@ -230,23 +227,58 @@ update msg model =
         Resize width height ->
             { model | width = width, height = height }
 
-        KeyDown (Speed k) ->
-            { model | speeding=k }
+        -- 書き直し箇所その2 ここをelm-physicsのLack.elのupdate関数を参考に書き換える
+        KeyDown keyRay ->
+            let
+                maybeRaycastResult =
+                    model.world
+                        |> World.keepIf
+                            (\body -> (Body.data body).id == Player)
+                        |> World.raycast keyRay
+            in
+            case maybeRaycastResult of
+                Just RaycastResult ->
+                    let
+                        worldPoint =
+                            Point3d.placeIn
+                                (Body.frame raycastResult.body)
+                                raycastResult.point
 
-        KeyDown (Steer k) ->
-            { model | steeting=k }
+                        selectedId =
+                            (Body.data raycastResult.body).id
+                    in
+                    { model
+                        | maybeRaycastResult = Just raycastResult
+                        , world =
+                            model.world
+                                |> World.add (Body.moveTo worldPoint key) -- key関数を後で追加
+                                |> World.constrain
+                                    (\b1 b2 ->
+                                        if
+                                            ((Body.data b1).id == Mouse)
+                                                && ((Body.data b2).id == selectedId)
+                                        then
+                                            [ Physics.Constraint.pointToPoint
+                                                Point3d.origin
+                                                raycastResult.point
+                                            ]
 
-        KeyDown (Jump j) ->
-            { model | jumping=j } 
+                                        else
+                                            []
+                                    )
+                    }
 
-        KeyUp (Speed _) ->
-            { model | speeding=0}
+                Nothing ->
+                    model
 
-        KeyUp (Steer _) ->
-            { model | steeting=0}
-
-        KeyUp (Jump j) ->
-            { model | jumping=-j } 
+        KeyUp ->
+            { model
+                | maybeRaycastResult = Nothing
+                , world =
+                    World.keepIf
+                        (\body -> (Body.data body).id /= Mouse)
+                        model.world
+            }
 
         Restart ->
             { model | world=initialWorld } 
@@ -257,12 +289,13 @@ update msg model =
 subscriptions : Model -> Sub Msg
 subscriptions _ =
     Sub.batch
-        [ Browser.Events.onKeyDown (keyDecoder KeyDown)
-        , Browser.Events.onKeyUp (keyDecoder KeyUp)
+        [ Browser.Events.onResize
+            (\width height ->
+                Resize (pixels (toFloat width)) (pixels (toFloat height))
+            )
+        , Browser.Events.onAnimationFrame (\_ -> AnimationFrame)
         ]
 
-
--- VIEW
 
 lightBulb : Light WorldCoordinates Bool
 lightBulb =
@@ -284,6 +317,8 @@ overheadLighting =
         }
 
 
+-- VIEW
+
 
 view : Model -> Html Msg
 view model =
@@ -297,7 +332,7 @@ view model =
                 )
                 (World.bodies model.world)
     in
-    Html.div [ ]
+    Html.div [ onKeyPress KeyDown ]
         [ Scene3d.custom -- ここでやっと３Dを実装する。
             { lights = Scene3d.twoLights lightBulb overheadLighting
             , camera = camera model
