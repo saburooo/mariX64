@@ -118,6 +118,41 @@ type Msg
     | Restart
 
 
+-- KEYCONFIG
+type Direction
+    = Left
+    | Right
+    | Up
+    | Down
+    | Space
+    | Other
+
+
+keyDecoder : Decode.Decoder Direction
+keyDecoder =
+    Decode.map toDirection (Decode.field "key" Decode.string)
+
+
+toDirection : String -> Direction
+toDirection string =
+    case string of
+        "ArrowLeft" ->
+            Left
+
+        "ArrowRight" ->
+            Right
+
+        "ArrowUp" ->
+            Up
+
+        "ArrowDown" ->
+            Down
+
+        "Space" ->
+            Space
+
+        _ ->
+            Other
 
 
 init : () -> ( Model, Cmd Msg )
@@ -185,43 +220,6 @@ floorBody =
         }
 
 
-key:Body Data
-key =
-    compound []
-        { id = Key
-        , entity =
-            Scene3d.sphere (Material.matte Color.white)
-                (Sphere3d.atOrigin (millimeters 20))}
-
-
-decodeKeyRay:
-    Camera3d Meters WorldCoordinates
-    -> Quantity Float Pixels
-    -> Quantity Float Pixels
-    -> (Axis3d Meters WorldCoordinates -> msg)
-    -> Decode.Decoder msg
-decodeKeyRay camera3d width height rayToMsg =
-    Decode.map2
-        (\x y ->
-            rayToMsg
-                (Camera3d.ray
-                    camera3d
-                    (Rectangle2d.with
-                        { x1 = pixels 0
-                        , y1 = height
-                        , x2 = width
-                        , y2 = pixels 0
-                        }
-                    )
-                    (Point2d.pixels x y)
-                )
-        )
-        -- おそらくここにイベントリスナを書く
-        (Decode.field "leftKey" Decode.float)
-        (Decode.field "rightKey" Decode.float)
-
-
-
 -- UPDATE
 
 
@@ -233,52 +231,7 @@ update msg model =
 
         Resize width height ->
             { model | width = width, height = height }
-
         -- 書き直し箇所その2 ここをelm-physicsのLack.elのupdate関数を参考に書き換える
-        KeyDown keyRay ->
-            case model.maybeRaycastResult of
-                Just raycastResult ->
-                    let
-                        worldPoint =
-                            Point3d.placeIn
-                                (Body.frame raycastResult.body)
-                                raycastResult.point
-
-                        plane =
-                            Plane3d.through
-                                worldPoint
-                                (Viewpoint3d.viewDirection (Camera3d.viewpoint camera))
-                    in
-                    { model
-                        | world =
-                            World.update
-                                (\body ->
-                                    if (Body.data body).id == Key then
-                                        case Axis3d.intersectionWithPlane plane keyRay of
-                                            Just intersection ->
-                                                Body.moveTo intersection body
-
-                                            Nothing ->
-                                                body
-
-                                    else
-                                        body
-                                )
-                                model.world
-                    }
-
-                Nothing ->
-                    model
-
-        KeyUp ->
-            { model
-                | maybeRaycastResult = Nothing
-                , world =
-                    World.keepIf
-                        (\body -> (Body.data body).id /= Key)
-                        model.world
-            }
-
         Restart ->
             { model | world=initialWorld } 
 
