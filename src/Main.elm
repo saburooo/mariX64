@@ -102,6 +102,7 @@ type alias Data =
 type alias Model =
     { world : World Data
     , exposureValue : Float
+    , vectol : Float
     , maybeRaycastResult : Maybe (RaycastResult Data)
     , width : Quantity Float Pixels
     , height : Quantity Float Pixels
@@ -113,46 +114,67 @@ type alias Model =
 type Msg
     = AnimationFrame
     | Resize (Quantity Float Pixels) (Quantity Float Pixels)
-    | KeyDown (Axis3d Meters WorldCoordinates)
-    | KeyUp
     | Restart
+    | KeyDown Direction
+    | KeyUp Direction
 
 
 -- KEYCONFIG
 type Direction
-    = Left
-    | Right
-    | Up
-    | Down
-    | Space
+    = LeftOrRight Float
+    | UpOrDown Float
+    | Space Float
     | Other
 
 
-keyDecoder : Decode.Decoder Direction
-keyDecoder =
-    Decode.map toDirection (Decode.field "key" Decode.string)
+-- TODO どうやって Msg に組み込むか そしてその入力をどうやってプレイヤー・キャラクターに反映させるのか？
+keyDecoder : (Direction -> Msg) -> Decode.Decoder Msg
+keyDecoder toMsg =
+    Decode.field "key" Decode.string
+        |> Decode.andThen
+            (\string ->
+                case string of
+                    "ArrowLeft" ->
+                        Decode.succeed (toMsg (LeftOrRight -1))
 
+                    "ArrowRight" ->
+                        Decode.succeed (toMsg (LeftOrRight 1))
 
+                    "ArrowUp" ->
+                        Decode.succeed (toMsg (UpOrDown 1))
+
+                    "ArrowDown" ->
+                        Decode.succeed (toMsg (UpOrDown -1))
+
+                    "Space" ->
+                        Decode.succeed (toMsg (Space 1))
+
+                    _ ->
+                        Decode.fail ("どこのキー押しとんじゃい: " ++ string)
+            )
+
+{--
 toDirection : String -> Direction
 toDirection string =
-    case string of
-        "ArrowLeft" ->
-            Left
+  case string of
+    "ArrowLeft" ->
+        Left 1
 
-        "ArrowRight" ->
-            Right
+    "ArrowRight" ->
+        Right 1
 
-        "ArrowUp" ->
-            Up
+    "ArrowUp" ->
+        Up 1
 
-        "ArrowDown" ->
-            Down
+    "ArrowDown" ->
+        Down 1
 
-        "Space" ->
-            Space
+    "Space" ->
+        Space 1
 
-        _ ->
-            Other
+    _ ->
+        Other
+--}
 
 
 init : () -> ( Model, Cmd Msg )
@@ -162,6 +184,7 @@ init _ =
     , height=pixels 0
     , maybeRaycastResult = Nothing
     , exposureValue = 0
+    , vectol = 0
     }
     , Task.perform
         (\{ viewport } ->
@@ -179,26 +202,26 @@ initialWorld=
         |> World.withGravity 
             (Acceleration.metersPerSecondSquared 9.80665)
             Direction3d.negativeZ
-        |> World.add player
+        |> World.add (player 0)
         |> World.add floorBody
 
 
 
 -- Worldに召喚されるもの
 -- MATERIAL
-player:Body Data
-player=
+player: Float -> Body Data
+player speed =
     let
         heroModel =
             Block3d.centeredOn Frame3d.atOrigin
-                (millimeters 85, millimeters 85, millimeters 85)
+                (millimeters 185, millimeters 185, millimeters 185)
     in
     plane
         { id = Player
         , entity=
             heroModel
                 |> Scene3d.block (Material.metal { baseColor = Color.blue, roughness = 0.7 })
-                |> Scene3d.translateBy (Vector3d.millimeters 10 10 -10)
+                |> Scene3d.translateBy (Vector3d.millimeters (10 + speed) (10 + speed) -10)
             }
 
 
@@ -227,13 +250,53 @@ update : Msg -> Model -> Model
 update msg model =
     case msg of
         AnimationFrame ->
-            { model | world = World.simulate (seconds (1 / 60)) model.world }
+            { model
+                | world =
+                    let
+                        baseFrame = 
+                            model.world
+                                |> World.bodies
+                                |> List.filter (\b -> (data b).id == Player)
+                                |> List.head
+                                |> Maybe.map (\b -> Body.frame b)
+                                |> Maybe.withDefault Frame3d.atOrigin
+                    in
+                    model.world
+                        |> World.constrain (constainPlayer model.vectol)
+                        |> World.update (applySpeed model.vectol baseFrame)
+                        |> World.simulate (seconds (1 / 60))
+            }
 
         Resize width height ->
             { model | width = width, height = height }
+
         -- 書き直し箇所その2 ここをelm-physicsのLack.elのupdate関数を参考に書き換える
         Restart ->
             { model | world=initialWorld } 
+
+        KeyDown Other ->
+            { model | vectol=0 }
+
+        KeyDown (Space k) ->
+            { model | vectol=k }
+
+        KeyDown (LeftOrRight k) ->
+            { model | vectol=k }
+
+        KeyDown (UpOrDown k) ->
+            { model | vectol=k }
+
+        KeyUp (LeftOrRight _) ->
+            { model | vectol=0 }
+
+        KeyUp (UpOrDown _) ->
+            { model | vectol=0 }
+
+        KeyUp (Space _) ->
+            { model | vectol=0 }
+
+        KeyUp Other ->
+            { model | vectol=0 }
 
 
 
@@ -246,6 +309,8 @@ subscriptions _ =
                 Resize (pixels (toFloat width)) (pixels (toFloat height))
             )
         , Browser.Events.onAnimationFrame (\_ -> AnimationFrame)
+        , Browser.Events.onKeyDown (keyDecoder KeyDown)
+        , Browser.Events.onKeyUp (keyDecoder KeyUp)
         ]
 
 
@@ -301,8 +366,67 @@ view model =
             ]
 
 
-
 -- RENDERING
+constainPlayer : Float -> Body Data -> Body Data -> List Constraint 
+constainPlayer vectol b1 b2 =
+    let
+        vectolAngle =
+            vectol * pi / 8
+        
+        dx = 
+            cos vectolAngle
+
+        dy = 
+            sin vectolAngle
+
+        hingee =
+            hinge
+                (Axis3d.through
+                    (Point3d.meters 3 3 0)
+                    (Direction3d.unsafe { x = 1, y = 0, z = 0 })
+                )
+                (Axis3d.through
+                    (Point3d.meters 0 0 0)
+                    (Direction3d.unsafe { x = -1, y = 0, z = 0 })
+                )
+    in
+    case ( (Body.data b1).id, (Body.data b2).id ) of
+        ( Player, Key ) ->
+            [ hingee ]
+
+        _ ->
+            []
+
+
+
+
+
+applySpeed : Float -> Frame3d Meters WorldCoordinates { defines : BodyCoordinates } -> Body Data -> Body Data
+applySpeed speed baseFrame body =
+    if speed /= 0 then
+        let
+            forward =
+                Frame3d.yDirection baseFrame
+
+            up =
+                Frame3d.zDirection baseFrame
+
+            wheelPoint =
+                Frame3d.originPoint (Body.frame body)
+
+            pointOnTheWheel =
+                wheelPoint |> Point3d.translateBy (Vector3d.withLength (Length.meters 1.2) up)
+
+            pointUnderTheWheel =
+                wheelPoint |> Point3d.translateBy (Vector3d.withLength (Length.meters 1.2) (Direction3d.reverse up))
+        in
+        body
+            |> Body.applyForce (Force.newtons (-speed * 100)) forward pointOnTheWheel
+            |> Body.applyForce (Force.newtons (-speed * 100)) (Direction3d.reverse forward) pointUnderTheWheel
+
+    else
+        body
+
 
 
 camera : Camera3d Meters WorldCoordinates
